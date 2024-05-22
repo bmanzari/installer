@@ -19,12 +19,12 @@ cleanup() {
 }
 trap cleanup EXIT TERM
 
-# Retrieve the pullsecret and store it in a temporary file. 
+# Retrieve the pullsecret and store it in a temporary file.
 pullSecretFile=$(mktemp -p "/tmp" -t "nodejoiner-XXXXXXXXXX")
 oc get secret -n openshift-config pull-secret -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > "$pullSecretFile"
 
 # Extract the baremetal-installer image pullspec from the current cluster.
-nodeJoinerPullspec=$(oc adm release info --image-for=baremetal-installer --registry-config="$pullSecretFile")
+nodeJoinerPullspec=$(oc adm release info --image-for=baremetal-installer --registry-config="$pullSecretFile" --insecure)
 
 # Use the same random temp file suffix for the namespace.
 namespace=$(echo "openshift-node-joiner-${pullSecretFile#/tmp/nodejoiner-}" | tr '[:upper:]' '[:lower:]')
@@ -93,7 +93,7 @@ metadata:
   annotations:
     openshift.io/scc: anyuid
   labels:
-    app: node-joiner    
+    app: node-joiner
 spec:
   restartPolicy: Never
   serviceAccountName: node-joiner
@@ -109,23 +109,23 @@ spec:
       mountPath: /config
     - name: assets
       mountPath: /assets
-    command: ["/bin/sh", "-c", "cp /config/nodes-config.yaml /assets; HOME=/assets node-joiner add-nodes --dir=/assets --log-level=debug; sleep 600"]    
+    command: ["/bin/sh", "-c", "cp /config/nodes-config.yaml /assets; HOME=/assets node-joiner add-nodes --dir=/assets --log-level=debug; sleep 600"]
   volumes:
   - name: nodes-config
-    configMap: 
+    configMap:
       name: nodes-config
       namespace: ${namespace}
   - name: assets
-    emptyDir: 
+    emptyDir:
       sizeLimit: "4Gi"
 EOF
 )
 echo "$nodeJoinerPod" | oc apply -f -
 
-while true; do 
+while true; do
   if oc exec node-joiner -n "${namespace}" -- test -e /assets/exit_code >/dev/null 2>&1; then
     break
-  else 
+  else
     echo "Waiting for node-joiner pod to complete..."
     sleep 10s
   fi

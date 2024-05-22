@@ -19,12 +19,12 @@ cleanup() {
 }
 trap cleanup EXIT TERM
 
-# Retrieve the pullsecret and store it in a temporary file. 
+# Retrieve the pullsecret and store it in a temporary file.
 pullSecretFile=$(mktemp -p "/tmp" -t "nodejoiner-XXXXXXXXXX")
 oc get secret -n openshift-config pull-secret -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > "$pullSecretFile"
 
 # Extract the baremetal-installer image pullspec from the current cluster.
-nodeJoinerPullspec=$(oc adm release info --image-for=baremetal-installer --registry-config="$pullSecretFile")
+nodeJoinerPullspec=$(oc adm release info --image-for=baremetal-installer --registry-config="$pullSecretFile" --insecure)
 
 # Use the same random temp file suffix for the namespace.
 namespace=$(echo "openshift-node-joiner-${pullSecretFile#/tmp/nodejoiner-}" | tr '[:upper:]' '[:lower:]')
@@ -89,7 +89,7 @@ metadata:
   annotations:
     openshift.io/scc: anyuid
   labels:
-    app: node-joiner-monitor    
+    app: node-joiner-monitor
 spec:
   restartPolicy: Never
   serviceAccountName: node-joiner-monitor
@@ -100,7 +100,7 @@ spec:
   - name: node-joiner-monitor
     imagePullPolicy: IfNotPresent
     image: $nodeJoinerPullspec
-    command: ["/bin/sh", "-c", "node-joiner monitor-add-nodes $ipAddresses --log-level=info; sleep 5"]    
+    command: ["/bin/sh", "-c", "node-joiner monitor-add-nodes $ipAddresses --dir=/tmp --log-level=info; sleep 5"]
 EOF
 )
 echo "$nodeJoinerPod" | oc apply -f -
@@ -110,6 +110,6 @@ oc project "${namespace}"
 oc wait --for=condition=Ready=true --timeout=300s pod/node-joiner-monitor
 
 oc logs -f -n "${namespace}" node-joiner-monitor
- 
+
 echo "Cleaning up"
 oc delete namespace "${namespace}" --grace-period=0 >/dev/null 2>&1 &
